@@ -40,6 +40,14 @@ python consolidar_excels.py datos_demo
 python consolidar_excels.py datos_demo --agrupar producto -o ventas_septiembre.xlsx
 ```
 
+## Web app (no command line needed)
+
+Prefer a point-and-click version? Run the Streamlit app, upload your files, pick how to group the summary and download the report:
+
+```bash
+streamlit run app.py
+```
+
 ## Customize
 
 Different column names in your files? Add them to the `ALIAS` dictionary at the top of `consolidar_excels.py`:
