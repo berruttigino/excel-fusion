@@ -1,4 +1,13 @@
-# ExcelFusion
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo_reverse.svg">
+    <img src="assets/logo.svg" alt="ExcelFusion" width="400">
+  </picture>
+</p>
+
+<h3 align="center">Many files. One report.</h3>
+
+<p align="center"><a href="https://excelfusion.streamlit.app"><b>Try the live app</b></a></p>
 
 Merge dozens of messy Excel and CSV files into one clean report, in seconds.
 
@@ -60,6 +69,10 @@ The **Dashboard** tab turns the merged data into indicators and charts. Pick wha
 - **Filters:** choose categories, date range and how many items to show in the ranking
 
 It shows total, average, number of records, the top category with its share, the best period, a ranking bar chart and a time-series line chart.
+
+## Brand
+
+Logo, colors and typography are documented in [BRAND.md](BRAND.md).
 
 ## Customize
 

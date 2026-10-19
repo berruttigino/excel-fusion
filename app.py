@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import marca
 from consolidar_excels import EXTENSIONES, armar_resumen, formatear_hoja, leer_archivo
 from dashboard import (PERIODOS, calcular_kpis, detectar_columnas, elegir_defaults, filtrar,
                        ranking, serie_tiempo, tabla_kpis)
@@ -123,27 +124,21 @@ def mostrar_dashboard(df, defaults):
         rank = ranking(datos, categoria, metrica, top)
         with g1:
             st.subheader(f"{metrica} / {categoria}")
-            st.bar_chart(rank, x=categoria, y=metrica)
+            st.bar_chart(rank, x=categoria, y=metrica, color=marca.VERDE)
             st.dataframe(rank)
     if fecha:
         serie = serie_tiempo(datos, fecha, metrica, freq)
         if len(serie):
             with g2:
                 st.subheader(f"{metrica} / {PERIODOS[freq].lower()}")
-                st.line_chart(serie)
+                st.line_chart(serie, color=marca.TINTA)
         else:
             with g2:
                 st.info("No valid dates to build the time chart. / No hay fechas válidas para el gráfico.")
 
 
-def main():
-    st.set_page_config(page_title="ExcelFusion", page_icon="📊", layout="wide")
-    st.title("📊 ExcelFusion")
-    st.write(
-        "Merge messy Excel and CSV files into one clean report, with KPIs and charts. "
-        "*Uní tus Excel y CSV desordenados en un solo reporte, con KPIs y gráficos.*"
-    )
-
+def contenido():
+    """Cargador, KPIs, dashboard y descarga (todo lo que va debajo de la cabecera)."""
     subidos = st.file_uploader(
         "Upload your files / Subí tus archivos",
         type=[e.lstrip(".") for e in sorted(EXTENSIONES)],
@@ -197,6 +192,14 @@ def main():
         st.dataframe(consolidado)
     with tab3:
         st.dataframe(log)
+
+
+def main():
+    st.set_page_config(page_title="ExcelFusion: many files, one report", page_icon=marca.icono_pagina(), layout="wide")
+    marca.aplicar_estilo(st)
+    marca.cabecera(st)
+    contenido()
+    marca.pie(st)
 
 
 if __name__ == "__main__":

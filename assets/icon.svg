@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="ExcelFusion">
+  <title>ExcelFusion</title>
+  
+  <rect width="512" height="512" rx="112" fill="#14213D"/>
+  <rect x="109.00" y="109.00" width="105.00" height="77.00" rx="21.00" fill="#FFFFFF" />
+  <rect x="109.00" y="207.00" width="105.00" height="77.00" rx="21.00" fill="#FFFFFF" />
+  <rect x="109.00" y="305.00" width="105.00" height="77.00" rx="21.00" fill="#FFFFFF" />
+  <rect x="242.00" y="109.00" width="140.00" height="273.00" rx="24.50" fill="#2FA468" />
+  <rect x="361.00" y="361.00" width="42.00" height="42.00" rx="7.00" fill="#F2B134" stroke="#14213D" stroke-width="9.10"/>
+</svg>
