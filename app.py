@@ -74,11 +74,69 @@ def numero(valor) -> str:
     return f"{valor:,.2f}"
 
 
+PERIODO_EN = {"D": "day", "W": "week", "M": "month"}
+
+
+def dominio(valores):
+    """Rango del eje Y: empieza en 0 (o en el mínimo si hay negativos) y deja un 8% de aire arriba."""
+    v = pd.Series(valores).dropna()
+    if v.empty:
+        return [0, 1]
+    bajo, alto = min(0.0, float(v.min())), max(0.0, float(v.max()))
+    if alto == bajo:
+        alto = bajo + 1
+    return [bajo * 1.08 if bajo < 0 else 0, alto * 1.08]
+
+
+def grafico_ranking(rank, categoria, metrica):
+    """Barras verdes ordenadas de mayor a menor. Devuelve (datos, especificación Vega-Lite)."""
+    datos = pd.DataFrame({"categoria": rank[categoria].astype(str), "valor": rank[metrica]})
+    spec = {
+        "height": 320,
+        "mark": {"type": "bar", "color": marca.VERDE, "cornerRadiusTopLeft": 2, "cornerRadiusTopRight": 2},
+        "encoding": {
+            "x": {"field": "categoria", "type": "nominal", "sort": "-y", "title": None,
+                  "axis": {"labelAngle": 0 if len(datos) <= 6 else -40, "labelLimit": 140}},
+            "y": {"field": "valor", "type": "quantitative", "title": metrica,
+                  "scale": {"domain": dominio(datos["valor"])}},
+            "tooltip": [{"field": "categoria", "type": "nominal", "title": categoria},
+                        {"field": "valor", "type": "quantitative", "title": metrica, "format": ",.2f"}],
+        },
+    }
+    return datos, spec
+
+
+def grafico_tiempo(serie, metrica, freq):
+    """Línea azul tinta con puntos, con el eje Y desde cero. Devuelve (datos, especificación)."""
+    datos = pd.DataFrame({"periodo": serie.index, "valor": serie.values})
+    formato = "%b %Y" if freq == "M" else "%d %b"
+    spec = {
+        "height": 320,
+        "mark": {"type": "line", "color": marca.TINTA, "strokeWidth": 2.5,
+                 "point": {"color": marca.TINTA, "size": 45}},
+        "encoding": {
+            "x": {"field": "periodo", "type": "temporal", "title": None, "axis": {"format": formato}},
+            "y": {"field": "valor", "type": "quantitative", "title": metrica,
+                  "scale": {"domain": dominio(datos["valor"])}},
+            "tooltip": [{"field": "periodo", "type": "temporal", "title": PERIODO_EN[freq], "format": formato},
+                        {"field": "valor", "type": "quantitative", "title": metrica, "format": ",.2f"}],
+        },
+    }
+    return datos, spec
+
+
+def mostrar_vega(datos, spec):
+    try:
+        st.vega_lite_chart(datos, spec, use_container_width=True)
+    except TypeError:  # versiones nuevas de Streamlit sin ese parámetro
+        st.vega_lite_chart(datos, spec)
+
+
 def mostrar_dashboard(df, defaults):
     """Pestaña Dashboard: elegís métrica, categoría y fechas, y ves KPIs y gráficos."""
     cols = detectar_columnas(df)
     if not cols["numericas"]:
-        st.info("No numeric columns found to build KPIs. / No hay columnas numéricas para calcular KPIs.")
+        marca.aviso(st, "No numeric columns found to build KPIs. / No hay columnas numéricas para calcular KPIs.")
         return
 
     c1, c2, c3, c4 = st.columns(4)
@@ -89,7 +147,7 @@ def mostrar_dashboard(df, defaults):
     if fecha:
         opciones = list(PERIODOS)
         freq = c4.selectbox("Period / Período", opciones, index=opciones.index(freq),
-                            format_func=lambda x: PERIODOS[x])
+                            format_func=lambda x: f"{PERIODOS[x]} / {PERIODO_EN[x].capitalize()}")
 
     valores, desde, hasta = None, None, None
     with st.expander("Filters / Filtros"):
@@ -117,24 +175,26 @@ def mostrar_dashboard(df, defaults):
     if k["lider"] is not None:
         m[3].metric(f"Top {categoria} ({k['lider_pct']:.1f}%)", k["lider"])
     if k["mejor_periodo"] is not None:
-        m[4].metric("Best period / Mejor período", k["mejor_periodo"], help=f"Total: {numero(k['mejor_periodo_valor'])}")
+        m[4].metric(f"Best {PERIODO_EN[freq]}", k["mejor_periodo"], help=f"Mejor período / Best period. Total: {numero(k['mejor_periodo_valor'])}")
 
     g1, g2 = st.columns(2)
     if categoria:
         rank = ranking(datos, categoria, metrica, top)
         with g1:
-            st.subheader(f"{metrica} / {categoria}")
-            st.bar_chart(rank, x=categoria, y=metrica, color=marca.VERDE)
+            st.subheader(f"{metrica} by {categoria}")
+            mostrar_vega(*grafico_ranking(rank, categoria, metrica))
             st.dataframe(rank)
     if fecha:
         serie = serie_tiempo(datos, fecha, metrica, freq)
-        if len(serie):
-            with g2:
-                st.subheader(f"{metrica} / {PERIODOS[freq].lower()}")
-                st.line_chart(serie, color=marca.TINTA)
-        else:
-            with g2:
-                st.info("No valid dates to build the time chart. / No hay fechas válidas para el gráfico.")
+        with g2:
+            if len(serie):
+                st.subheader(f"{metrica} by {PERIODO_EN[freq]}")
+                mostrar_vega(*grafico_tiempo(serie, metrica, freq))
+                if freq != "D":
+                    st.caption("The first and last periods may be incomplete. / "
+                               "El primer y el último período pueden estar incompletos.")
+            else:
+                marca.aviso(st, "No valid dates to build the time chart. / No hay fechas válidas para el gráfico.")
 
 
 def contenido():
@@ -145,7 +205,7 @@ def contenido():
         accept_multiple_files=True,
     )
     if not subidos:
-        st.info("Upload two or more files to start. / Subí dos o más archivos para empezar.")
+        marca.aviso(st, "Upload two or more files to start. / Subí dos o más archivos para empezar.")
         return
 
     consolidado, log = cargar(subidos)

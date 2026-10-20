@@ -32,6 +32,7 @@ CSS = f"""
 }}
 .stApp p, .stApp li, .stApp label {{ font-size: 1.05rem; }}
 .stApp h2, .stApp h3 {{ color: var(--ink); font-weight: 700; letter-spacing: -0.005em; }}
+.stApp h3 {{ font-size: 1.35rem; }}
 .stApp .block-container {{ max-width: 1200px; padding-top: 2.4rem; padding-bottom: 3rem; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
 
@@ -60,10 +61,10 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 
 /* Indicadores: cifras tabulares y un borde de columna en vez de tarjetas */
 [data-testid="stMetric"] {{ border-left: 3px solid var(--green); padding: .15rem 0 .15rem .95rem; }}
-[data-testid="stMetricLabel"] p {{ color: var(--muted); font-size: .98rem; }}
-[data-testid="stMetricValue"] {{ color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }}
-[data-testid="stMetricValue"] > div {{
-  font-size: 1.75rem; line-height: 1.15; white-space: normal; overflow: visible; text-overflow: clip;
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {{ color: var(--muted); font-size: .98rem; overflow: visible; white-space: normal; }}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
+  color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 1.7rem; line-height: 1.15; white-space: normal; overflow: visible; text-overflow: clip;
 }}
 
 /* Pestañas, avisos, filtros y botón de descarga */
@@ -76,6 +77,12 @@ button[data-baseweb="tab"] p {{ font-weight: 700; font-size: 1.05rem; }}
 }}
 [data-testid="stDownloadButton"] button p {{ color: #FFFFFF; }}
 [data-testid="stDownloadButton"] button:hover {{ background: #1B5F3A; color: #FFFFFF; }}
+
+/* Avisos (reemplazan al cuadro azul por defecto) */
+.stApp .ef-note {{
+  background: var(--mint); border-left: 3px solid var(--green); border-radius: 3px;
+  color: var(--ink); padding: .85rem 1.1rem; margin: 1rem 0; font-size: 1.05rem;
+}}
 
 /* Pie */
 .stApp .ef-foot {{
@@ -108,6 +115,11 @@ def icono_pagina():
 
 def aplicar_estilo(st) -> None:
     st.markdown(_una_linea(CSS), unsafe_allow_html=True)
+
+
+def aviso(st, texto: str) -> None:
+    """Mensaje informativo con el estilo de la marca."""
+    st.markdown(f'<div class="ef-note">{texto}</div>', unsafe_allow_html=True)
 
 
 def cabecera(st) -> None:
