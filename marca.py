@@ -64,7 +64,7 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {{ color: var(--muted); font-size: .98rem; overflow: visible; white-space: normal; }}
 [data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
   color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums;
-  font-size: 1.85rem !important; line-height: 1.15 !important; white-space: normal; overflow: visible; text-overflow: clip;
+  font-size: 1.85rem !important; line-height: 1.15 !important; white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere;
 }}
 
 /* Pestañas, avisos, filtros y botón de descarga */

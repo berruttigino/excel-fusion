@@ -175,7 +175,10 @@ def mostrar_dashboard(df, defaults):
     if k["lider"] is not None:
         m[3].metric(f"Top {categoria} ({k['lider_pct']:.1f}%)", k["lider"])
     if k["mejor_periodo"] is not None:
-        m[4].metric(f"Best {PERIODO_EN[freq]}", k["mejor_periodo"], help=f"Mejor período / Best period. Total: {numero(k['mejor_periodo_valor'])}")
+        # En semanas se muestra solo la fecha de inicio: "31/08/2026" en vez de "Semana del 31/08/2026"
+        valor = k["mejor_periodo"].replace("Semana del ", "")
+        rotulo = "Best week (from)" if freq == "W" else f"Best {PERIODO_EN[freq]}"
+        m[4].metric(rotulo, valor, help=f"Mejor período / Best period. Total: {numero(k['mejor_periodo_valor'])}")
 
     g1, g2 = st.columns(2)
     if categoria:
