@@ -15,13 +15,17 @@ import pandas as pd
 import streamlit as st
 
 import marca
-from consolidar_excels import EXTENSIONES, armar_resumen, formatear_hoja, leer_archivo
-from dashboard import (PERIODOS, calcular_kpis, detectar_columnas, elegir_defaults, filtrar,
-                       ranking, serie_tiempo, tabla_kpis)
+from consolidar_excels import EXTENSIONES, armar_resumen, formatear_hoja, leer_archivo, limpiar_nombre
+from dashboard import PERIODOS, calcular_kpis, detectar_columnas, elegir_defaults, filtrar, ranking, serie_tiempo
+from excel_dashboard import agregar_dashboard
+from mapeo import (COL_EN, COL_NUEVO, COL_ORIGINAL, aplicar_mapeo, hay_columnas_desparejas,
+                   sugerir_mapeo, tabla_columnas)
+
+COLUMNAS_LOG = ["archivo", "hoja", "estado", "detalle"]
 
 
-def cargar(archivos):
-    """Lee los archivos subidos. Devuelve (consolidado | None, registro)."""
+def leer_subidos(archivos, quitar_totales=True):
+    """Lee los archivos subidos. Devuelve (lista de tablas, registro)."""
     registro, frames = [], []
     with tempfile.TemporaryDirectory() as tmp:
         for i, archivo in enumerate(archivos):
@@ -29,11 +33,13 @@ def cargar(archivos):
             if ruta.exists():  # dos archivos con el mismo nombre
                 ruta = Path(tmp) / f"{ruta.stem}_{i}{ruta.suffix}"
             ruta.write_bytes(archivo.getvalue())
-            frames += leer_archivo(ruta, registro)
+            frames += leer_archivo(ruta, registro, quitar_totales)
+    return frames, registro
 
-    if not frames:
-        return None, pd.DataFrame(registro, columns=["archivo", "hoja", "estado", "detalle"])
 
+def unir(frames, registro):
+    """Junta las tablas en una sola y avisa de las columnas que no están en todos los archivos."""
+    registro = list(registro)
     consolidado = pd.concat(frames, ignore_index=True, sort=False)
     for col in consolidado.columns:
         if col in ("archivo_origen", "hoja_origen"):
@@ -41,31 +47,29 @@ def cargar(archivos):
         faltan = sorted({f["archivo_origen"].iat[0] for f in frames if col not in f.columns})
         if faltan:
             registro.append(("-", "-", "AVISO", f"Columna '{col}' falta en: {', '.join(faltan)}"))
-    return consolidado, pd.DataFrame(registro, columns=["archivo", "hoja", "estado", "detalle"])
+    return consolidado, pd.DataFrame(registro, columns=COLUMNAS_LOG)
 
 
-def exportar_excel(consolidado, resumen, log, kpis=None, ranking_df=None) -> bytes:
+def cargar(archivos, quitar_totales=True, mapeo=None):
+    """Atajo: lee, aplica el mapeo (el sugerido si no se da uno) y une. Devuelve (consolidado | None, registro)."""
+    frames, registro = leer_subidos(archivos, quitar_totales)
+    if not frames:
+        return None, pd.DataFrame(registro, columns=COLUMNAS_LOG)
+    return unir(aplicar_mapeo(frames, mapeo or sugerir_mapeo(frames)), registro)
+
+
+def exportar_excel(consolidado, resumen, log, dashboard=None) -> bytes:
     """Arma el reporte en memoria y devuelve los bytes del .xlsx.
-    Hojas: Consolidado, Resumen, KPIs (si hay datos numéricos) y Registro."""
+    Hojas: Dashboard (con gráficos de Excel, si hay datos numéricos), Consolidado, Resumen y Registro."""
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl", datetime_format="DD/MM/YYYY") as xl:
         consolidado.to_excel(xl, sheet_name="Consolidado", index=False)
         resumen.to_excel(xl, sheet_name="Resumen", index=False)
-        if kpis is not None:
-            kpis.to_excel(xl, sheet_name="KPIs", index=False)
-            if ranking_df is not None and len(ranking_df):
-                ranking_df.to_excel(xl, sheet_name="KPIs", index=False, startrow=len(kpis) + 3)
         log.to_excel(xl, sheet_name="Registro", index=False)
         for hoja in xl.book.worksheets:
             formatear_hoja(hoja)
-            if hoja.title == "KPIs":
-                hoja.auto_filter.ref = None  # la hoja tiene dos tablas: sin filtro global
-                if ranking_df is not None and len(ranking_df):
-                    from openpyxl.styles import Font, PatternFill
-                    for celda in hoja[len(kpis) + 4]:  # encabezado de la tabla de ranking
-                        if celda.value is not None:
-                            celda.font = Font(bold=True)
-                            celda.fill = PatternFill("solid", fgColor="D9E1F2")
+        if dashboard:
+            agregar_dashboard(xl.book, dashboard)
     return buffer.getvalue()
 
 
@@ -149,7 +153,7 @@ def mostrar_dashboard(df, defaults):
         freq = c4.selectbox("Period / Período", opciones, index=opciones.index(freq),
                             format_func=lambda x: f"{PERIODOS[x]} / {PERIODO_EN[x].capitalize()}")
 
-    valores, desde, hasta = None, None, None
+    valores, desde, hasta, todos = None, None, None, []
     with st.expander("Filters / Filtros"):
         top = st.slider("Top N", min_value=3, max_value=20, value=10)
         if categoria:
@@ -167,6 +171,12 @@ def mostrar_dashboard(df, defaults):
         st.warning("No data for the selected filters. / No hay datos con los filtros elegidos.")
         return
 
+    partes = []
+    if categoria and valores is not None and len(valores) < len(todos):
+        partes.append(f"{categoria}: " + ", ".join(valores[:4]) + ("…" if len(valores) > 4 else ""))
+    if desde is not None:
+        partes.append(f"fechas {desde:%d/%m/%Y} a {hasta:%d/%m/%Y}")
+
     k = calcular_kpis(datos, metrica, categoria, fecha, freq)
     m = st.columns(5)
     m[0].metric(f"Total {metrica}", numero(k["total"]))
@@ -180,6 +190,7 @@ def mostrar_dashboard(df, defaults):
         rotulo = "Best week (from)" if freq == "W" else f"Best {PERIODO_EN[freq]}"
         m[4].metric(rotulo, valor, help=f"Mejor período / Best period. Total: {numero(k['mejor_periodo_valor'])}")
 
+    rank, serie = None, None
     g1, g2 = st.columns(2)
     if categoria:
         rank = ranking(datos, categoria, metrica, top)
@@ -199,9 +210,13 @@ def mostrar_dashboard(df, defaults):
             else:
                 marca.aviso(st, "No valid dates to build the time chart. / No hay fechas válidas para el gráfico.")
 
+    # Lo que se ve en pantalla es lo que se descarga: el Excel arma su hoja Dashboard con esta configuración
+    return {"metrica": metrica, "categoria": categoria, "fecha": fecha, "freq": freq, "kpis": k,
+            "ranking": rank if rank is not None else pd.DataFrame(), "serie": serie, "filtros": "; ".join(partes)}
+
 
 def contenido():
-    """Cargador, KPIs, dashboard y descarga (todo lo que va debajo de la cabecera)."""
+    """Cargador, mapeo de columnas, KPIs, dashboard y descarga (todo lo que va debajo de la cabecera)."""
     subidos = st.file_uploader(
         "Upload your files / Subí tus archivos",
         type=[e.lstrip(".") for e in sorted(EXTENSIONES)],
@@ -211,11 +226,34 @@ def contenido():
         marca.aviso(st, "Upload two or more files to start. / Subí dos o más archivos para empezar.")
         return
 
-    consolidado, log = cargar(subidos)
-    if consolidado is None:
+    with st.expander("Options / Opciones"):
+        quitar_totales = st.checkbox(
+            "Skip total rows (Total, Subtotal...) / Omitir filas de totales (Total, Subtotal...)", value=True)
+
+    # Leer los archivos es lo más lento: se hace una sola vez por cada conjunto de archivos y opciones
+    firma = (tuple((a.name, a.size) for a in subidos), quitar_totales)
+    if st.session_state.get("firma") != firma:
+        st.session_state["firma"] = firma
+        st.session_state["frames"], st.session_state["registro"] = leer_subidos(subidos, quitar_totales)
+    frames, registro = st.session_state["frames"], st.session_state["registro"]
+    if not frames:
         st.error("No file could be read. / No se pudo leer ningún archivo.")
-        st.dataframe(log)
+        st.dataframe(pd.DataFrame(registro, columns=COLUMNAS_LOG))
         return
+
+    # Mapeo de columnas: sugerido automáticamente, editable por la persona
+    with st.expander("Column mapping / Mapeo de columnas", expanded=hay_columnas_desparejas(frames)):
+        st.caption("Columns named differently in each file? Rename them to the same name to merge them. "
+                   "Suggestions are pre-filled: review them. / ¿Columnas con nombres distintos en cada archivo? "
+                   "Poneles el mismo nombre para unirlas. Las sugerencias ya vienen cargadas: revisalas.")
+        editada = st.data_editor(tabla_columnas(frames), hide_index=True, disabled=[COL_ORIGINAL, COL_EN],
+                                 key=f"mapeo_{abs(hash(firma))}")
+    mapeo = {}
+    for original, nuevo in zip(editada[COL_ORIGINAL], editada[COL_NUEVO]):
+        mapeo[original] = (limpiar_nombre(nuevo) if isinstance(nuevo, str) else "") or original
+    registro_final = list(registro) + [("-", "-", "INFO", f"Columna '{o}' unificada como '{n}'")
+                                       for o, n in mapeo.items() if o != n]
+    consolidado, log = unir(aplicar_mapeo(frames, mapeo), registro_final)
 
     # Columnas de texto disponibles para agrupar el resumen
     opciones = ["archivo_origen"] + [
@@ -224,37 +262,31 @@ def contenido():
     ]
     agrupar = st.selectbox("Group summary by / Agrupar resumen por", opciones)
     resumen = armar_resumen(consolidado, agrupar)
-
-    # KPIs automáticos para la hoja 'KPIs' del Excel (con las columnas más probables)
     defaults = elegir_defaults(consolidado)
-    kpis_df = ranking_df = None
-    if defaults["metrica"]:
-        kpis_df = tabla_kpis(consolidado, defaults["metrica"], defaults["categoria"],
-                             defaults["fecha"], defaults["freq"])
-        if defaults["categoria"]:
-            ranking_df = ranking(consolidado, defaults["categoria"], defaults["metrica"], top=10)
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Files / Archivos", len(subidos))
     c2.metric("Rows / Filas", len(consolidado))
     c3.metric("Columns / Columnas", len(consolidado.columns))
 
-    st.download_button(
-        "⬇️ Download report (.xlsx) / Descargar reporte",
-        data=exportar_excel(consolidado, resumen, log, kpis_df, ranking_df),
-        file_name="reporte_consolidado.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    zona_descarga = st.container()  # el botón queda acá arriba, pero se completa al final (ya con el dashboard elegido)
 
     tab0, tab1, tab2, tab3 = st.tabs(["Dashboard", "Resumen", "Consolidado", "Registro"])
     with tab0:
-        mostrar_dashboard(consolidado, defaults)
+        config = mostrar_dashboard(consolidado, defaults)
     with tab1:
         st.dataframe(resumen)
     with tab2:
         st.dataframe(consolidado)
     with tab3:
         st.dataframe(log)
+
+    zona_descarga.download_button(
+        "⬇️ Download report (.xlsx) / Descargar reporte",
+        data=exportar_excel(consolidado, resumen, log, config),
+        file_name="reporte_consolidado.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 def main():

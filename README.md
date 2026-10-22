@@ -21,16 +21,19 @@ The output workbook has four sheets:
 
 | Sheet | Content |
 |---|---|
+| **Dashboard** | KPI tiles and two native Excel charts (ranking and trend) built from the same selection you see in the web app. The charts read the data tables below them, so you can edit them in Excel |
 | **Consolidado** | All rows from all files, with the source file and sheet of each row |
 | **Resumen** | Totals per group (per file by default, or per any column you choose) |
-| **KPIs** | Key indicators (total, average, max/min, top category, best period) and a top-10 ranking, built automatically when the data has numeric columns |
 | **Registro** | What was read, what failed, empty sheets skipped and columns missing in some files |
 
 ## Features
 
-- Reads all sheets of every Excel file, plus CSVs
-- Unifies different column names for the same thing (`Importe`, `Total` and `Monto` become one column)
-- Removes accents and extra spaces from headers
+- Reads all sheets of every Excel file, plus CSVs (comma, semicolon or tab separated, UTF-8 or Latin-1)
+- **Finds the header row by itself**: skips report titles, blank rows and leading notes
+- **Skips total rows** ("Total", "Subtotal", "Grand total") so sums are not counted twice; you can turn it off
+- Understands numbers in both formats: `1,234.56` and `1.234,56`
+- **Column mapping**: suggests which columns from different files are the same thing (`Importe neto`, `Total` and `Monto` become one) and lets you edit the names before merging
+- Removes accents, punctuation and extra spaces from headers
 - Parses date columns (day-first format)
 - Skips empty sheets and reports corrupt files instead of crashing
 - Dashboard with KPIs and charts in the web app (see below)
@@ -51,6 +54,8 @@ python consolidar_excels.py datos_demo
 python consolidar_excels.py datos_demo --agrupar producto -o ventas_septiembre.xlsx
 ```
 
+Want to see the header detection and the column mapping at work? Use the three intentionally messy files in [`ejemplos_desordenados/`](ejemplos_desordenados): titles above the table, a `;`-separated CSV with decimal commas, different column names and "Total" rows.
+
 ## Web app (no command line needed)
 
 Prefer a point-and-click version? Run the Streamlit app, upload your files, pick how to group the summary and download the report:
@@ -69,6 +74,8 @@ The **Dashboard** tab turns the merged data into indicators and charts. Pick wha
 - **Filters:** choose categories, date range and how many items to show in the ranking
 
 It shows total, average, number of records, the top category with its share, the best period, a ranking bar chart and a time-series line chart.
+
+The downloaded Excel opens on a **Dashboard** sheet with the same indicators and native Excel charts, using the metric, category, period and filters you chose.
 
 ## Brand
 
