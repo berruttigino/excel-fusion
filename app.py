@@ -18,6 +18,7 @@ import marca
 from consolidar_excels import EXTENSIONES, armar_resumen, formatear_hoja, leer_archivo, limpiar_nombre
 from dashboard import PERIODOS, calcular_kpis, detectar_columnas, elegir_defaults, filtrar, ranking, serie_tiempo
 from excel_dashboard import agregar_dashboard
+from limpieza import limpiar
 from mapeo import (COL_EN, COL_NUEVO, COL_ORIGINAL, aplicar_mapeo, hay_columnas_desparejas,
                    sugerir_mapeo, tabla_columnas)
 
@@ -58,16 +59,32 @@ def cargar(archivos, quitar_totales=True, mapeo=None):
     return unir(aplicar_mapeo(frames, mapeo or sugerir_mapeo(frames)), registro)
 
 
-def exportar_excel(consolidado, resumen, log, dashboard=None) -> bytes:
+def exportar_excel(consolidado, resumen, log, dashboard=None, limpieza=None) -> bytes:
     """Arma el reporte en memoria y devuelve los bytes del .xlsx.
-    Hojas: Dashboard (con gráficos de Excel, si hay datos numéricos), Consolidado, Resumen y Registro."""
+    Hojas: Dashboard (con gráficos de Excel, si hay datos numéricos), Consolidado, Resumen, Limpieza (si se
+    limpió algo) y Registro. 'limpieza' es (resumen de la limpieza, filas eliminadas)."""
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl", datetime_format="DD/MM/YYYY") as xl:
         consolidado.to_excel(xl, sheet_name="Consolidado", index=False)
         resumen.to_excel(xl, sheet_name="Resumen", index=False)
+        if limpieza is not None:
+            resumen_limpieza, eliminadas = limpieza
+            resumen_limpieza.to_excel(xl, sheet_name="Limpieza", index=False)
+            if len(eliminadas):
+                eliminadas.to_excel(xl, sheet_name="Limpieza", index=False, startrow=len(resumen_limpieza) + 3)
         log.to_excel(xl, sheet_name="Registro", index=False)
         for hoja in xl.book.worksheets:
             formatear_hoja(hoja)
+            if hoja.title == "Limpieza":
+                hoja.auto_filter.ref = None  # son dos tablas: sin filtro global
+                if len(limpieza[1]):
+                    from openpyxl.styles import Font, PatternFill
+                    fila = len(limpieza[0]) + 3
+                    hoja.cell(fila, 1, "Filas eliminadas (revisalas):").font = Font(bold=True)
+                    for celda in hoja[fila + 1]:
+                        if celda.value is not None:
+                            celda.font = Font(bold=True)
+                            celda.fill = PatternFill("solid", fgColor="D9E1F2")
         if dashboard:
             agregar_dashboard(xl.book, dashboard)
     return buffer.getvalue()
@@ -255,6 +272,29 @@ def contenido():
                                        for o, n in mapeo.items() if o != n]
     consolidado, log = unir(aplicar_mapeo(frames, mapeo), registro_final)
 
+    # Limpieza de datos: cada cambio queda registrado y las filas eliminadas no se pierden
+    with st.expander("Data cleaning / Limpieza de datos"):
+        st.caption("Nothing disappears silently: every change is listed in the Registro and removed rows get their own "
+                   "sheet. / Nada desaparece en silencio: cada cambio queda en el Registro y las filas eliminadas "
+                   "van a su propia hoja.")
+        recortar = st.checkbox("Trim extra spaces / Quitar espacios sobrantes", value=True)
+        variantes = st.checkbox("Unify spelling variants (Café, CAFÉ, cafe become one) / "
+                                "Unificar variantes de escritura (Café, CAFÉ y cafe pasan a ser una)", value=True)
+        duplicados = st.selectbox(
+            "Remove duplicate rows / Eliminar filas duplicadas", ["no", "archivo", "todos"],
+            format_func=lambda x: {"no": "No", "archivo": "Only inside each file / Solo dentro de cada archivo",
+                                   "todos": "Across all files / Entre todos los archivos"}[x])
+        faltantes = st.checkbox("Flag rows with missing data (adds a column) / "
+                                "Marcar filas con datos faltantes (agrega una columna)", value=False)
+    consolidado, eliminadas, resumen_limpieza = limpiar(consolidado, recortar, variantes, duplicados, faltantes)
+    cambios = resumen_limpieza[resumen_limpieza["Cantidad"] > 0]
+    if len(cambios):
+        marca.aviso(st, "Cleaning applied / Limpieza aplicada: " +
+                    " · ".join(f"{a} {n}" for a, n, _ in cambios.itertuples(index=False)))
+        log = pd.concat([log, pd.DataFrame(
+            [("-", "-", "INFO", f"Limpieza: {a} = {n}. {d}") for a, n, d in cambios.itertuples(index=False)],
+            columns=COLUMNAS_LOG)], ignore_index=True)
+
     # Columnas de texto disponibles para agrupar el resumen
     opciones = ["archivo_origen"] + [
         c for c in consolidado.select_dtypes(exclude=["number", "datetime"]).columns
@@ -283,7 +323,7 @@ def contenido():
 
     zona_descarga.download_button(
         "⬇️ Download report (.xlsx) / Descargar reporte",
-        data=exportar_excel(consolidado, resumen, log, config),
+        data=exportar_excel(consolidado, resumen, log, config, (resumen_limpieza, eliminadas) if len(cambios) else None),
         file_name="reporte_consolidado.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )

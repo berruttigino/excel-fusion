@@ -42,6 +42,9 @@ def _estilo_grafico(grafico, titulo, titulo_y, valores):
     grafico.legend = None
     grafico.width, grafico.height = ANCHO_GRAFICO, ALTO_GRAFICO
     grafico.y_axis.title = titulo_y
+    # Excel superpone los títulos al gráfico salvo que se indique lo contrario
+    grafico.title.overlay = False
+    grafico.y_axis.title.overlay = False
     grafico.y_axis.number_format = "#,##0"
     grafico.x_axis.delete = False
     grafico.y_axis.delete = False
